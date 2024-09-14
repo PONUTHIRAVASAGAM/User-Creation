@@ -1,6 +1,8 @@
 package com.example.demo.controller;
 
 
+import java.time.LocalDateTime;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -15,7 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.demo.config.JwtTokenUtil;
 import com.example.demo.dto.LoginRequestDto;
 import com.example.demo.dto.RegisterRequestDto;
+import com.example.demo.modal.FailedLoginAttempt;
 import com.example.demo.modal.User;
+import com.example.demo.repo.FailedLoginAttemptRepository;
 import com.example.demo.repo.UserRepository;
 import com.example.demo.service.OtpService;
 
@@ -28,6 +32,9 @@ public class UserController {
 	
 	@Autowired
 	private UserRepository userRepository;
+	
+	@Autowired
+	private FailedLoginAttemptRepository failedLoginAttemptRepository;
 	
 	@Autowired
     private PasswordEncoder passwordEncoder;
@@ -90,18 +97,24 @@ public class UserController {
 	    return ResponseEntity.status(HttpStatus.OK).body("User verified successfully and activated.");
 	}	
 	
+	
 	@PostMapping("/login")
 	public ResponseEntity<?> login(@RequestBody LoginRequestDto dto) {
 	    User user = userRepository.findByUsername(dto.getUsername());
 
-	    // Check if user exists and password is correct
-	    if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+	    if (user == null) {
+	        recordFailedLoginAttempt(dto.getUsername());
 	        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid username or password");
 	    }
 
-	    // Check user status
+
+	    if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+	        recordFailedLoginAttempt(dto.getUsername());
+	        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid username or password");
+	    }
+
 	    if ("ACTIVE".equalsIgnoreCase(user.getStatus())) {
-	        // Generate token if user is active
+	    	
 	        String token = JwtTokenUtil.generateToken(user.getUsername());
 
 	        if ("ADMIN".equalsIgnoreCase(user.getRole())) {
@@ -112,10 +125,46 @@ public class UserController {
 	            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access Denied");
 	        }
 	    } else {
-	        // Prompt user to verify OTP if not active
 	        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Please verify your OTP to activate your account.");
 	    }
 	}
+
+	private void recordFailedLoginAttempt(String username) {
+		
+	    FailedLoginAttempt attempt = new FailedLoginAttempt();
+	    attempt.setUsername(username);
+	    attempt.setTimestamp(LocalDateTime.now());
+	    failedLoginAttemptRepository.save(attempt);
+	    
+	}
+
+	
+//	@PostMapping("/login")
+//	public ResponseEntity<?> login(@RequestBody LoginRequestDto dto) {
+//	    User user = userRepository.findByUsername(dto.getUsername());
+//
+//	    // Check if user exists and password is correct
+//	    if (user == null || !passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
+//	        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid username or password");
+//	    }
+//
+//	    // Check user status
+//	    if ("ACTIVE".equalsIgnoreCase(user.getStatus())) {
+//	        // Generate token if user is active
+//	        String token = JwtTokenUtil.generateToken(user.getUsername());
+//
+//	        if ("ADMIN".equalsIgnoreCase(user.getRole())) {
+//	            return ResponseEntity.status(HttpStatus.OK).body("Welcome Admin! You have full access. Token: " + token);
+//	        } else if ("USER".equalsIgnoreCase(user.getRole())) {
+//	            return ResponseEntity.status(HttpStatus.OK).body("Welcome User! You have limited access. Token: " + token);
+//	        } else {
+//	            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Access Denied");
+//	        }
+//	    } else {
+//	        // Prompt user to verify OTP if not active
+//	        return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Please verify your OTP to activate your account.");
+//	    }
+//	}
 
 
 
